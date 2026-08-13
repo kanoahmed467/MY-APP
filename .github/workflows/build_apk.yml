@@ -2,64 +2,38 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    # 1. فك ضغط أي ملف zip يلقاه في المستودع تلقائياً
-    - name: Extract Zip File
-      run: |
-        sudo apt-get install -y unzip
-        ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
-        if [ -n "$ZIP_FILE" ]; then
-          echo "Unzipping: $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d extracted_project
-        fi
+      - name: Unzip project
+        run: unzip aniflux.zip -d my_app
 
-    # 2. إعداد بيئة Java
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-    # 3. إعداد محرك Gradle تلقائياً
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-    # 4. البحث عن مكان ملف البناء وتشغيله بأي طريقة متاحة
-    - name: Build APK
-      run: |
-        # البحث عن المجلد الذي يحتوي على build.gradle أو build.gradle.kts
-        BUILD_FILE=$(find . -name "build.gradle*" | head -n 1)
-        if [ -z "$BUILD_FILE" ]; then
-          echo "Error: Could not find build.gradle in the repository!"
-          exit 1
-        fi
-        
-        PROJECT_DIR=$(dirname "$BUILD_FILE")
-        echo "Found project directory at: $PROJECT_DIR"
-        cd "$PROJECT_DIR"
+      - name: Generate Debug Keystore
+        run: |
+          cd my_app
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
 
-        # استخدام gradlew إن وجد، أو استخدام gradle النظام مباشرة
-        if [ -f "gradlew" ]; then
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-        else
-          echo "gradlew not found, using system gradle..."
-          gradle assembleDebug --stacktrace
-        fi
+      - name: Build Debug APK
+        run: cd my_app && gradle assembleDebug
 
-    # 5. رفع ملف الـ APK الجاهز
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: SpeedManga-App
-        path: "**/build/outputs/apk/debug/*.apk"
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aniflux-app-apk
+          path: my_app/app/build/outputs/apk/debug/app-debug.apk

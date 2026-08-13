@@ -13,15 +13,21 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # أمر فك ضغط ملف الـ ZIP تلقائياً إذا وجده
-    - name: Unzip project if zip exists
+    # فك الضغط بأمان حتى لو اسم الملف فيه مسافات أو أقواس
+    - name: Unzip Project Safely
       run: |
-        if ls *.zip 1> /dev/null 2>&1; then
-          echo "Unzipping uploaded project..."
-          unzip -o *.zip
-          # تحريك الملفات للخارج لو كانت جوه مجلد فرعي
-          if [ ! -f "gradlew" ]; then
-            mv speed-manga*/* . 2>/dev/null || true
+        ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+        if [ -n "$ZIP_FILE" ]; then
+          echo "Found zip file: $ZIP_FILE"
+          unzip -o "$ZIP_FILE" -d extracted_temp
+          
+          # البحث عن مكان gradlew ونقل كل محتويات المشروع للمسار الرئيسي
+          GRADLEW_PATH=$(find extracted_temp -name "gradlew" | head -n 1)
+          if [ -n "$GRADLEW_PATH" ]; then
+            PROJECT_DIR=$(dirname "$GRADLEW_PATH")
+            echo "Moving files from $PROJECT_DIR to repository root..."
+            cp -rn "$PROJECT_DIR"/* . 2>/dev/null || true
+            cp -rn "$PROJECT_DIR"/.* . 2>/dev/null || true
           fi
         fi
 
@@ -30,10 +36,15 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
     - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+      run: |
+        if [ -f "gradlew" ]; then
+          chmod +x gradlew
+        else
+          echo "Error: gradlew file not found after unzipping!"
+          exit 1
+        fi
 
     - name: Build Debug APK
       run: ./gradlew assembleDebug --stacktrace

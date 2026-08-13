@@ -13,44 +13,53 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # فك الضغط بأمان حتى لو اسم الملف فيه مسافات أو أقواس
-    - name: Unzip Project Safely
+    # 1. فك ضغط أي ملف zip يلقاه في المستودع تلقائياً
+    - name: Extract Zip File
       run: |
-        ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+        sudo apt-get install -y unzip
+        ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
         if [ -n "$ZIP_FILE" ]; then
-          echo "Found zip file: $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d extracted_temp
-          
-          # البحث عن مكان gradlew ونقل كل محتويات المشروع للمسار الرئيسي
-          GRADLEW_PATH=$(find extracted_temp -name "gradlew" | head -n 1)
-          if [ -n "$GRADLEW_PATH" ]; then
-            PROJECT_DIR=$(dirname "$GRADLEW_PATH")
-            echo "Moving files from $PROJECT_DIR to repository root..."
-            cp -rn "$PROJECT_DIR"/* . 2>/dev/null || true
-            cp -rn "$PROJECT_DIR"/.* . 2>/dev/null || true
-          fi
+          echo "Unzipping: $ZIP_FILE"
+          unzip -o "$ZIP_FILE" -d extracted_project
         fi
 
+    # 2. إعداد بيئة Java
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Grant execute permission for gradlew
+    # 3. إعداد محرك Gradle تلقائياً
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    # 4. البحث عن مكان ملف البناء وتشغيله بأي طريقة متاحة
+    - name: Build APK
       run: |
-        if [ -f "gradlew" ]; then
-          chmod +x gradlew
-        else
-          echo "Error: gradlew file not found after unzipping!"
+        # البحث عن المجلد الذي يحتوي على build.gradle أو build.gradle.kts
+        BUILD_FILE=$(find . -name "build.gradle*" | head -n 1)
+        if [ -z "$BUILD_FILE" ]; then
+          echo "Error: Could not find build.gradle in the repository!"
           exit 1
         fi
+        
+        PROJECT_DIR=$(dirname "$BUILD_FILE")
+        echo "Found project directory at: $PROJECT_DIR"
+        cd "$PROJECT_DIR"
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+        # استخدام gradlew إن وجد، أو استخدام gradle النظام مباشرة
+        if [ -f "gradlew" ]; then
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+        else
+          echo "gradlew not found, using system gradle..."
+          gradle assembleDebug --stacktrace
+        fi
 
+    # 5. رفع ملف الـ APK الجاهز
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: SpeedManga-App
-        path: app/build/outputs/apk/debug/*.apk
+        path: "**/build/outputs/apk/debug/*.apk"
